@@ -1,20 +1,23 @@
 package geckolib.fsm.state;
 
+import com.google.common.base.Preconditions;
 import geckolib.fsm.enums.LoopState;
 import geckolib.fsm.event.EventRegistry;
+import geckolib.fsm.event.IEventListener;
 import geckolib.fsm.event.StateEvent;
 
 public class State
 {
+	public static final State ANY = new State.Builder().anim("").loop(LoopState.PLAY_ONCE).length(0).build();
+
 	final EventRegistry<StateEvent.Begin> startEventRegistry = new EventRegistry<>();
 	final EventRegistry<StateEvent.End> endEventRegistry = new EventRegistry<>();
-	final EventRegistry<StateEvent.Render> renderEventRegistry = new EventRegistry<>();
+	final EventRegistry<StateEvent.Update> updateEventRegistry = new EventRegistry<>();
 	String animation;
 	LoopState loop;
-
 	double length;
 
-	State()
+	private State()
 	{
 	}
 
@@ -43,9 +46,80 @@ public class State
 		this.endEventRegistry.on(event);
 	}
 
-	public void onRender(StateEvent.Render event)
+	public void onUpdate(StateEvent.Update event)
 	{
-		this.renderEventRegistry.on(event);
+		this.updateEventRegistry.on(event);
+	}
+
+	public static class Builder
+	{
+		private final State state;
+
+		public Builder()
+		{
+			this.state = new State();
+		}
+
+		/**
+		 * Sets the desired loop mode of this state. {@link LoopState#HOLD_ON_LAST} will cause the state to hold on the very last keyframe instead of reset to the beginning.
+		 */
+		public Builder loop(LoopState loop)
+		{
+			this.state.loop = loop;
+			return this;
+		}
+
+		/**
+		 * Sets the actual animation name for this state. This must match an animation name in the json file.
+		 */
+		public Builder anim(String animationName)
+		{
+			this.state.animation = animationName;
+			return this;
+		}
+
+		/**
+		 * The length of this state, this should almost always be the same as the animation length.
+		 *
+		 * The reason you have to provide this is because the server can't read the animation json file.
+		 *
+		 * @param length the length
+		 * @return the builder
+		 */
+		public Builder length(double length)
+		{
+			this.state.length = length;
+			return this;
+		}
+
+		public Builder onStart(IEventListener<StateEvent.Begin> eventListener)
+		{
+			this.state.startEventRegistry.register(eventListener);
+			return this;
+		}
+
+		public Builder onEnd(IEventListener<StateEvent.End> eventListener)
+		{
+			this.state.endEventRegistry.register(eventListener);
+			return this;
+		}
+
+		/**
+		 * Run every tick on servers and every frame on clients
+		 */
+		public Builder onUpdate(IEventListener<StateEvent.Update> eventListener)
+		{
+			this.state.updateEventRegistry.register(eventListener);
+			return this;
+		}
+
+		public State build()
+		{
+			Preconditions.checkNotNull(state.animation, "Animation name cannot be null");
+			Preconditions.checkNotNull(state.loop, "Loop state cannot be null");
+			Preconditions.checkState(state.length != 0, "Length of state cannot be 0");
+			return this.state;
+		}
 	}
 }
 

@@ -35,9 +35,9 @@ public class StateEvent extends FSMEvent
 		}
 	}
 
-	public static class Render extends StateEvent
+	public static class Update extends StateEvent
 	{
-		public Render(Side side, State state, FSMInfo FSMInfo)
+		public Update(Side side, State state, FSMInfo FSMInfo)
 		{
 			super(side, state, FSMInfo);
 		}

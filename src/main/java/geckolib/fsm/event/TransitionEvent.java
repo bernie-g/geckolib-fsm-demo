@@ -35,9 +35,9 @@ public class TransitionEvent extends FSMEvent
 		}
 	}
 
-	public static class Render extends TransitionEvent
+	public static class Update extends TransitionEvent
 	{
-		public Render(Side side, Transition transition, FSMInfo FSMInfo)
+		public Update(Side side, Transition transition, FSMInfo FSMInfo)
 		{
 			super(side, transition, FSMInfo);
 		}
