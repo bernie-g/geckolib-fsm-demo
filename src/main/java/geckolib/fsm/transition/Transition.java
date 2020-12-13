@@ -1,6 +1,8 @@
 package geckolib.fsm.transition;
 
+import com.google.common.base.Objects;
 import com.google.common.base.Preconditions;
+import com.google.common.collect.HashMultimap;
 import geckolib.fsm.enums.AutoAdvanceMode;
 import geckolib.fsm.enums.SwitchTime;
 import geckolib.fsm.event.EventRegistry;
@@ -9,9 +11,9 @@ import geckolib.fsm.event.TransitionEvent;
 import geckolib.fsm.state.State;
 import software.bernie.geckolib.core.IAnimatable;
 
-import java.util.Optional;
-import java.util.OptionalDouble;
+import java.util.*;
 import java.util.function.Predicate;
+
 
 public class Transition
 {
@@ -19,11 +21,10 @@ public class Transition
 	final EventRegistry<TransitionEvent.End> endEventRegistry = new EventRegistry<>();
 	final EventRegistry<TransitionEvent.Update> updateEventRegistry = new EventRegistry<>();
 
-	private State startState;
-	private State endState;
-	private SwitchTime switchTime;
+	private HashMultimap<State, Connection> connections = HashMultimap.create();
+	private SwitchTime switchTime = SwitchTime.END;
 	private OptionalDouble delay = OptionalDouble.empty();
-	private AutoAdvanceMode autoAdvance;
+	private AutoAdvanceMode autoAdvance = AutoAdvanceMode.OFF;
 	private Optional<Predicate<IAnimatable>> autoAdvancePredicate = Optional.empty();
 	private Optional<CurveClip> curveClip = Optional.empty();
 
@@ -51,16 +52,6 @@ public class Transition
 		return autoAdvancePredicate;
 	}
 
-	public State getStartState()
-	{
-		return startState;
-	}
-
-	public State getEndState()
-	{
-		return endState;
-	}
-
 	public Optional<CurveClip> getCurveClip()
 	{
 		return curveClip;
@@ -79,6 +70,41 @@ public class Transition
 	public void onUpdate(TransitionEvent.Update event)
 	{
 		this.updateEventRegistry.on(event);
+	}
+
+	public Set<Map.Entry<State, Connection>> getConnections()
+	{
+		return connections.entries();
+	}
+
+	public Optional<Set<Connection>> getConnection(State startState)
+	{
+		return Optional.ofNullable(this.connections.get(startState));
+	}
+
+	@Override
+	public boolean equals(Object o)
+	{
+		if (this == o)
+		{
+			return true;
+		}
+		if (o == null || getClass() != o.getClass())
+		{
+			return false;
+		}
+		Transition that = (Transition) o;
+		return switchTime == that.switchTime &&
+				Objects.equal(delay, that.delay) &&
+				autoAdvance == that.autoAdvance &&
+				Objects.equal(autoAdvancePredicate, that.autoAdvancePredicate) &&
+				Objects.equal(curveClip, that.curveClip);
+	}
+
+	@Override
+	public int hashCode()
+	{
+		return Objects.hashCode(switchTime, delay, autoAdvance, autoAdvancePredicate, curveClip);
 	}
 
 	public static class Builder
@@ -122,24 +148,18 @@ public class Transition
 
 
 		/**
-		 * The beginning state that this transition can go from. This transition will only be used is the state machine is in this state.
-		 *
+		 * The beginning states that this transition can go from. This transition will only be used is the state machine is in this state.
+		 * <p>
 		 * Pass in {@link State#ANY} to make this transition work for any state.
+		 * <p>
+		 * Self-loops are not supported, and neither are duplicate connections.
 		 */
-		public Builder from(State startState)
+		public ConnectionBuilder from(State... startStates)
 		{
-			this.transition.startState = startState;
-			return this;
+			Preconditions.checkState(startStates != null && startStates.length > 0, "Transition must contain at least one start state");
+			return new ConnectionBuilder(this, startStates);
 		}
 
-		/**
-		 * The end state that this transition will go to.
-		 */
-		public Builder to(State endState)
-		{
-			this.transition.endState = endState;
-			return this;
-		}
 
 		/**
 		 * When this transition will take effect. Read about every SwitchTime on the wiki. If you use a delayed SwitchTime you must also call {@link Transition.Builder#delay}
@@ -152,7 +172,7 @@ public class Transition
 
 		/**
 		 * Determines if this transition should automatically start after a certain state is reached. This is useful when used in conjunction with {@link SwitchTime#END} or {@link SwitchTime#END_DELAYED}
-		 *
+		 * <p>
 		 * Optionally you can use {@link AutoAdvanceMode#PREDICATE} to only automatically transition when a certain predicate is true. Make sure to call {@link Transition.Builder#autoAdvancePredicate} if you wish to use this.
 		 */
 		public Builder autoAdvance(AutoAdvanceMode mode)
@@ -185,19 +205,61 @@ public class Transition
 
 		public Transition build()
 		{
-			Preconditions.checkNotNull(transition.startState, "Start state cannot be null");
-			Preconditions.checkNotNull(transition.endState, "End state cannot be null");
-
-			if(this.transition.autoAdvance == AutoAdvanceMode.PREDICATE)
+			if (this.transition.autoAdvance == AutoAdvanceMode.PREDICATE)
 			{
-				Preconditions.checkState(transition.autoAdvancePredicate.isPresent());
+				Preconditions.checkState(transition.autoAdvancePredicate.isPresent(), "Please specify an auto advance predicate");
 			}
 
-			if(this.transition.switchTime == SwitchTime.BEGIN_DELAYED || this.transition.switchTime == SwitchTime.END_DELAYED)
+			if (this.transition.switchTime == SwitchTime.BEGIN_DELAYED || this.transition.switchTime == SwitchTime.END_DELAYED)
 			{
-				Preconditions.checkState(transition.delay.isPresent());
+				Preconditions.checkState(transition.delay.isPresent(), "No delay specified");
+			}
+
+			if (this.transition.delay.isPresent())
+			{
+				Preconditions.checkState(transition.switchTime == SwitchTime.BEGIN_DELAYED || transition.switchTime == SwitchTime.END_DELAYED, "Delay specified but SwitchTime isn't delayed");
 			}
 			return this.transition;
+		}
+	}
+
+	public static class ConnectionBuilder
+	{
+		private final Builder builder;
+		private final State[] startStates;
+
+		public ConnectionBuilder(Builder builder, State[] startStates)
+		{
+			this.builder = builder;
+			this.startStates = startStates;
+		}
+
+		/**
+		 * The end state that this connection will go to.
+		 * <p>
+		 * Self-loops are not supported, and neither are duplicate connections.
+		 */
+		public Builder to(State... endStates)
+		{
+			Preconditions.checkState(endStates != null && endStates.length > 0, "Transition must contain at least one end state");
+			Arrays.stream(endStates).forEach(x -> Preconditions.checkState(!x.equals(State.ANY), "State.ANY cannot be used as an end state."));
+			Arrays.stream(startStates).forEach(start ->
+					Arrays.stream(endStates)
+							.filter(x -> !x.equals(start))
+							.forEach(end ->
+							{
+								Connection connection;
+								if (start.equals(State.ANY))
+								{
+									connection = new Connection(null, end, this.builder.transition, true);
+								}
+								else
+								{
+									connection = new Connection(start, end, this.builder.transition);
+								}
+								this.builder.transition.connections.put(start, connection);
+							}));
+			return this.builder;
 		}
 	}
 }

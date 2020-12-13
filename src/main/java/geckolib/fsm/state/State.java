@@ -6,15 +6,17 @@ import geckolib.fsm.event.EventRegistry;
 import geckolib.fsm.event.IEventListener;
 import geckolib.fsm.event.StateEvent;
 
+import java.util.Objects;
+
 public class State
 {
-	public static final State ANY = new State.Builder().anim("").loop(LoopState.PLAY_ONCE).length(0).build();
+	public static final State ANY = new State.Builder().anim("").loop(LoopState.PLAY_ONCE).length(1).build();
 
 	final EventRegistry<StateEvent.Begin> startEventRegistry = new EventRegistry<>();
 	final EventRegistry<StateEvent.End> endEventRegistry = new EventRegistry<>();
 	final EventRegistry<StateEvent.Update> updateEventRegistry = new EventRegistry<>();
 	String animation;
-	LoopState loop;
+	LoopState loop = LoopState.LOOP;
 	double length;
 
 	private State()
@@ -51,6 +53,40 @@ public class State
 		this.updateEventRegistry.on(event);
 	}
 
+	@Override
+	public int hashCode()
+	{
+		return Objects.hash(animation, loop, length);
+	}
+
+	@Override
+	public boolean equals(Object obj)
+	{
+		if (obj == this)
+		{
+			return true;
+		}
+
+		if (obj == null || getClass() != obj.getClass())
+		{
+			return false;
+		}
+
+		State state = (State) obj;
+
+		return Objects.equals(length, state.length) && Objects.equals(animation, state.animation) && Objects.equals(loop, this.loop);
+	}
+
+	@Override
+	public String toString()
+	{
+		if (this == State.ANY)
+		{
+			return "ANY";
+		}
+		return animation + "[" + length + ", " + this.loop + "]";
+	}
+
 	public static class Builder
 	{
 		private final State state;
@@ -80,7 +116,7 @@ public class State
 
 		/**
 		 * The length of this state, this should almost always be the same as the animation length.
-		 *
+		 * <p>
 		 * The reason you have to provide this is because the server can't read the animation json file.
 		 *
 		 * @param length the length
